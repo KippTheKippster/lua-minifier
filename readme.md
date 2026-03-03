@@ -7,7 +7,7 @@ There is no guarantee that it will work with your code.
 There is also no error checking, the minifier assumes that the input is completly valid.
 
 Usage:
-lua minify.lua <infile> <outfile="out.lua"> <log=false>
+```lua minify.lua <infile=""> <outfile="out.lua"> <log=false>```
 
 Optimizations:
     Redefinable Members:
