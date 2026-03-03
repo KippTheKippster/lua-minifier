@@ -12,10 +12,10 @@ Usage:
 Optimizations:
     Redefinable Members:
         Writing
-            ```---\*name\*---```
+            ```---*name*---```
         at the top of a file allows the minifier to rename members of that table.
         Example:
-            ```---\*tbl\*---
+            ```---*tbl*---
             local tbl = {}
             tbl.var1 = 1```
         Becomes:
