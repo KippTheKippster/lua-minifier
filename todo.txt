@@ -1,0 +1,4 @@
+if a table is memberRedefinable allow redef = {var1 = 1} to use aliases
+if a table is memberRedefinable allow redef["var"] = 1 to use aliases
+add check to see that alias isn't redefining global variable
+optimize to call function without () 
