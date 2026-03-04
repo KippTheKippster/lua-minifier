@@ -25,7 +25,7 @@ end
 local ctxRoot = newContext(nil, nil, "root", true)
 
 local ctxLocal = newContext("local", nil, "local")
-local ctxTable = newContext("{", "}", "table")
+local ctxTable = newContext(nil, "}", "table")
 local ctxTableVarDef = newContext(nil, nil, "tableVarDef")
 local ctxTableVarInit = newContext(nil, nil, "tableVarInit")
 
@@ -47,16 +47,18 @@ local ctxStringSingle = newContext("'", "'", "stringSingle")
 ---@param ctx Context
 ---@param next Scope?
 ---@param prev Scope?
+---@param owner Symbol?
 ---@return Scope
-local function newScope(ctx, prev, next)
+local function newScope(ctx, prev, next, owner)
     ---@class Scope
     local scope = {
         ctx = ctx,
-        vars = {},
         next = next,
         prev = prev,
+        vars = {},
         aliases = {},
         aliasCount = 0,
+        owner = owner,
     }
 
     return scope
@@ -89,7 +91,7 @@ end
 ---@param list table
 ---@param i integer
 ---@return Symbol?, integer?
-local function getVarOwner(list, i)
+local function getDefiner(list, i)
     local symbol = list[i]
     while i > 0 do
         i = i - 1
@@ -99,11 +101,45 @@ local function getVarOwner(list, i)
             return symbol
         end
 
-        if symbol.src == "=" or symbol.src == "{" or symbol.type == "keyword" then
+        if ((symbol.type == "token" and symbol.src ~= "=" and symbol.src ~= "{") or
+            symbol.type == "keyword") then
             return nil
         end
     end
     return nil
+end
+
+---@param scope Scope
+---@return string?
+local function getVarOwner(scope)
+    if scope.ctx == ctxLocal then
+        return "local"
+    elseif scope.ctx == ctxTableVarDef then
+        assert(scope.prev)
+        if scope.prev.owner then
+            return scope.prev.owner.src
+        end
+    end
+    return nil
+end
+
+---comment
+---@param list table
+---@param i integer
+---@return Context
+local function getTableVarContext(list, i)
+    while i < #list do
+        i = i + 1
+
+        ---@type Symbol
+        local next = list[i]
+        if next.src == "=" then
+            return ctxTableVarDef
+        elseif next.src == "}" then
+            return ctxTableVarInit
+        end
+    end
+    error("Unable to determine table var type (end of symbols reached)")
 end
 
 ---comment
@@ -185,9 +221,9 @@ local function isAliasAllowed(scope, list, i)
     end
 
     -- var extractors
-    if prevSymbol.src == "." or prevSymbol.src == ":" then
+    if (prevSymbol.src == "." or prevSymbol.src == ":" ) then
         local owner = list[i - 2]
-        return memberRedefinable[owner.src] == true
+        return memberRedefinable[getVarOwner(scope)] == true
     end
 
     if scope.ctx == ctxStructureArgs then
@@ -200,7 +236,9 @@ local function isAliasAllowed(scope, list, i)
 
     if scope.ctx == ctxTableVarDef then
         -- This doesn't work
-        if memberRedefinable[getVarOwner(list, i)] then
+        local owner = getVarOwner(scope)
+        --print("IN DEF", owner.src)
+        if memberRedefinable[owner] then
             return true
         end
         return false
@@ -261,8 +299,8 @@ end
 ---@param i integer
 ---@return string
 local function nextAlias(scope, var, list, i)
-    local owner = getVarOwner(list, i)
-    if owner and memberRedefinable[owner.src] then
+    local owner = getVarOwner(scope)
+    if owner and memberRedefinable[owner] then
         scope = getRootScope(scope)
     end
 
@@ -288,9 +326,10 @@ end
 
 ---@param scope Scope
 ---@param ctx Context
+---@param owner Symbol?
 ---@return Scope, Context
-local function appendScope(scope, ctx)
-    local next = newScope(ctx, scope)
+local function appendScope(scope, ctx, owner)
+    local next = newScope(ctx, scope, nil, owner)
     scope.next = next
     scope = next
     return scope, scope.ctx
@@ -363,7 +402,7 @@ local function serialize(list)
         local symbol = v
         local skip = false
 
-        log(symbol.src, getScopeContextPath(scope))
+        local inCodeSpace = isInCodeSpace(scope)
 
         -- Detach scope
         if ctx then
@@ -404,7 +443,7 @@ local function serialize(list)
 
         -- Append scope
         local nextCtx = contextMap[symbol.src]
-        if not skip and isInCodeSpace(scope) then
+        if not skip and inCodeSpace then
             if nextCtx ~= nil then
                 scope, ctx = appendScope(scope, contextMap[symbol.src])
             else
@@ -412,6 +451,8 @@ local function serialize(list)
                 if symbol.src == "for" then
                     scope, ctx = appendScope(scope, ctxFor)
                     scope, ctx = appendScope(scope, ctxStructureArgs)
+                elseif symbol.src == "{" then
+                    scope, ctx = appendScope(scope, ctxTable, getDefiner(list, i))
                 elseif ctx == ctxFunction then -- function declaration
                     if symbol.src == "(" then
                         scope, ctx = appendScope(scope, ctxFunctionArgs)
@@ -428,14 +469,17 @@ local function serialize(list)
                     end
                 elseif ctx == ctxTable then
                     if symbol.type == "var" then
-                        scope, ctx = appendScope(scope, ctxTableVarDef)
+                        scope, ctx = appendScope(scope, getTableVarContext(list, i))
                     end
                 end
             end
         end
 
+        log(symbol.src, getScopeContextPath(scope))
+
+
         -- Variable declaration
-        if symbol.type == "var" then
+        if symbol.type == "var" and inCodeSpace then
             if ctx == ctxFunction then
                 storeVar(scope, symbol.src)
             elseif ctx == ctxFunctionArgs then
@@ -454,7 +498,7 @@ local function serialize(list)
         local src = symbol.src
 
         -- Alias
-        if isAliasAllowed(scope, list, i) then
+        if inCodeSpace and isAliasAllowed(scope, list, i) then
             local alias = nextAlias(scope, symbol.src, list, i)
             src = alias
         end
