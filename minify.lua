@@ -65,8 +65,8 @@ if ioout == nil then
     error("Failed to open out")
 end
 
-local symbolize = require"symbolize"
-local serialize = require"serialize"(memberRedefinable, log)
+local symbolize, newSymbol = table.unpack(require"symbolize", 1)
+local serialize = require"serialize"(newSymbol, memberRedefinable, log)
 
 local list = symbolize(textin)
 local text = serialize(list)

@@ -20,10 +20,11 @@ local tokens = toMap {
     "(", ")", "{", "}", "[", "]",
     ";", ":", ",", ".", "..", "...",
     "\'", "\"",
+    "[[", "]]",
 }
 
 local formats = toMap {
-    " ", "\\n", "--"
+    " ", "\n", "--", "--[["
 }
 
 local function newSymbol(src, type)
@@ -101,6 +102,19 @@ local function parseToken(text, i)
         end
     end
 
+    -- Should this be format, token or something else?
+    if peek() == "[" then
+        if peek(1) == "[" then
+            return "[[", 1
+        end
+    end
+
+    if peek() == "]" then
+        if peek(1) == "]" then
+            return "]]", 1
+        end
+    end
+
     local t = tokens[peek(0)]
     if t == true then
         return peek(0)
@@ -121,7 +135,7 @@ local function parseFormats(text, i)
     end
 
     if peek() == "\n" then
-        return "\\n", 0
+        return "\n", 0
     end
 
     if peek() == " " then
@@ -130,6 +144,11 @@ local function parseFormats(text, i)
 
     if peek() == "-" then
         if peek(1) == "-" then
+            if peek(2) == "[" then
+                if peek(3) == "[" then
+                    return "--[[", 3
+                end
+            end
             return "--", 1
         else
             return
@@ -193,4 +212,4 @@ local function symbolize(text)
     return symbols
 end
 
-return symbolize
+return {symbolize, newSymbol}

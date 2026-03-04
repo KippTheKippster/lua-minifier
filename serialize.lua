@@ -1,4 +1,4 @@
-return function (memberRedefinable, log)
+return function (newSymbol, memberRedefinable, log)
 local contextMap = {}
 
 ---comment
@@ -40,8 +40,10 @@ local ctxRepeat = newContext("repeat", "end", "repeat", true)
 local ctxStructureArgs = newContext(nil, nil, "structureArgs")         -- If, for, while
 
 local ctxComment = newContext(nil, nil, "comment")
+local ctxCommentMulti = newContext(nil, nil, "commentMulti")
 local ctxString = newContext("\"", "\"", "string")
 local ctxStringSingle = newContext("'", "'", "stringSingle")
+local ctxStringMulti = newContext("[[", "]]", "stringMulti")
 
 ---comment
 ---@param ctx Context
@@ -68,7 +70,7 @@ end
 ---@param scope Scope
 local function isInCodeSpace(scope)
     local ctx = scope.ctx
-    if ctx ~= ctxString and ctx ~= ctxStringSingle and ctx ~= ctxComment then
+    if ctx ~= ctxString and ctx ~= ctxStringSingle and ctx ~= ctxStringMulti and ctx ~= ctxComment and ctx ~= ctxCommentMulti then
         return true
     end
 
@@ -351,6 +353,7 @@ local function cleanSymbols(list)
     local cleanList = {}
     local rootScope = newScope(ctxRoot)
     local scope = rootScope
+    local stringSymbol = nil
     for i, v in ipairs(list) do
         ---@type Symbol
         local symbol = v
@@ -358,29 +361,53 @@ local function cleanSymbols(list)
         if isInCodeSpace(scope) then
             if symbol.src == "--" then
                 scope = appendScope(scope, ctxComment)
+            elseif symbol.src == "--[[" then
+                scope = appendScope(scope, ctxCommentMulti)
             elseif symbol.src == ctxString.startSymbol then
+                stringSymbol = newSymbol("", "string")
                 scope = appendScope(scope, ctxString)
                 skip = true
             elseif symbol.src == ctxStringSingle.startSymbol then
+                stringSymbol = newSymbol("", "string")
                 scope = appendScope(scope, ctxStringSingle)
                 skip = true
+            elseif symbol.src == ctxStringMulti.startSymbol then
+                stringSymbol = newSymbol("", "string")
+                print("SETTING")
+                scope = appendScope(scope, ctxStringMulti)
+                skip = true
+            end
+        end
+
+        log("cleaning:", "'" .. symbol.src .. "'", getScopeContextPath(scope))
+
+        if scope.ctx == ctxString or scope.ctx == ctxStringSingle or scope.ctx == ctxStringMulti then
+            assert(stringSymbol)
+            stringSymbol.src = stringSymbol.src .. symbol.src
+        else
+            if isInCodeSpace(scope) and symbol.type ~= "format" then
+                table.insert(cleanList, symbol)
             end
         end
 
         if skip == false then
-            if symbol.src == "\\n" and scope.ctx == ctxComment then
+            if symbol.src == "\n" and scope.ctx == ctxComment then
+                scope = detachScope(scope)
+            elseif symbol.src == "]]" and scope.ctx == ctxCommentMulti then
                 scope = detachScope(scope)
             elseif symbol.src == ctxString.endSymbol and scope.ctx == ctxString then
                 scope = detachScope(scope)
+                table.insert(cleanList, stringSymbol)
+                stringSymbol = nil
             elseif symbol.src == ctxStringSingle.endSymbol and scope.ctx == ctxStringSingle then
                 scope = detachScope(scope)
+                table.insert(cleanList, stringSymbol)
+                stringSymbol = nil                
+            elseif symbol.src == ctxStringMulti.endSymbol and scope.ctx == ctxStringMulti then
+                scope = detachScope(scope)
+                table.insert(cleanList, stringSymbol)
+                stringSymbol = nil
             end
-        end
-
-        if scope.ctx ~= ctxComment and symbol.type ~= "format" then
-            table.insert(cleanList, symbol)
-        elseif scope.ctx == ctxString or scope.ctx == ctxStringSingle then
-            table.insert(cleanList, symbol)
         end
     end
 
@@ -475,7 +502,7 @@ local function serialize(list)
             end
         end
 
-        log(symbol.src, getScopeContextPath(scope))
+        log("'" .. symbol.src .. "'", getScopeContextPath(scope))
 
 
         -- Variable declaration
