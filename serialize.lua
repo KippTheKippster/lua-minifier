@@ -29,7 +29,7 @@ local ctxTable = newContext(nil, "}", "table")
 local ctxTableVarDef = newContext(nil, nil, "tableVarDef")
 local ctxTableVarInit = newContext(nil, nil, "tableVarInit")
 
-local ctxFunction = newContext("function", nil, "function")
+local ctxFunction = newContext("function", nil, "function", true)
 local ctxFunctionArgs = newContext(nil, nil, "functionArgs")
 local ctxFunctionBody = newContext(nil, nil, "functionBody", true)
 
@@ -306,6 +306,10 @@ local function nextAlias(scope, var, list, i)
         scope = getRootScope(scope)
     end
 
+    if scope.ctx == ctxFunction then -- Fixes so that the function's name alias is not stored in the function scope
+        scope = scope.prev
+    end
+
     local count = 0
     local l = scope
     while l ~= nil do
@@ -508,7 +512,7 @@ local function serialize(list)
         -- Variable declaration
         if symbol.type == "var" and inCodeSpace then
             if ctx == ctxFunction then
-                storeVar(scope, symbol.src)
+                storeVar(scope.prev, symbol.src) -- 'scope.prev' Fixes so that the function's name is not stored in the function scope
             elseif ctx == ctxFunctionArgs then
                 storeVar(scope, symbol.src)
             elseif ctx == ctxLocal then
