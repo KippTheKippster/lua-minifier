@@ -1,6 +1,8 @@
-local function toMap(list)
+---@param arr string[]
+---@return table<string, boolean>
+local function toMap(arr)
     local map = {}
-    for _, v in ipairs(list) do
+    for _, v in ipairs(arr) do
         map[v] = true
     end
     return map
@@ -21,12 +23,17 @@ local tokens = toMap {
     ";", ":", ",", ".", "..", "...",
     "\'", "\"",
     "[[", "]]",
+    "[\"", "\"]",
+    "[\'", "\']",
 }
 
 local formats = toMap {
     " ", "\n", "--", "--[["
 }
 
+---@param src string
+---@param type string
+---@return Symbol
 local function newSymbol(src, type)
     ---@class Symbol
     local symbol = {
@@ -115,6 +122,28 @@ local function parseToken(text, i)
         end
     end
 
+    --[[
+    if peek() == "[" then
+        if peek(1) == "\"" then
+            return "[\"", 1
+        elseif peek(1) == "\'" then
+            return "[\'", 1
+        else
+            return "["
+        end
+    end
+
+    if peek() == "]" then
+        if peek(1) == "\"" then
+            return "\"]", 1
+        elseif peek(1) == "\'" then
+            return "\']", 1
+        else
+            return "]"
+        end
+    end
+    ]]--
+
     local t = tokens[peek(0)]
     if t == true then
         return peek(0)
@@ -179,6 +208,7 @@ end
 
 ---comment
 ---@param text string
+---@return Symbol[]
 local function symbolize(text)
     local symbols = {}
     local word = ""

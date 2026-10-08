@@ -7,6 +7,9 @@ local function log(...)
     end
 end
 
+---@param str string
+---@param sep string
+---@return string[]
 local function split(str, sep)
     if sep == nil then
         sep = "%s"
@@ -18,6 +21,8 @@ local function split(str, sep)
     return t
 end
 
+---@param text string
+---@return string?
 local function parseSettings(text)
     local word = ""
     local j = 0
@@ -40,7 +45,8 @@ local function parseSettings(text)
     end
 end
 
-local memberRedefinable = {
+---@type table<string, boolean>
+local allowedMemberAlias = {
 
 }
 
@@ -56,7 +62,7 @@ io.close(ioin)
 local settings = parseSettings(textin)
 if settings then
     for i, value in ipairs(split(settings, ",")) do
-        memberRedefinable[value] = true
+        allowedMemberAlias[value] = true
     end
 end
 
@@ -66,10 +72,10 @@ if ioout == nil then
 end
 
 local symbolize, newSymbol = table.unpack(require"symbolize", 1)
-local serialize = require"serialize"(newSymbol, memberRedefinable, log)
+local serialize = require"serialize"(newSymbol, allowedMemberAlias, log)
 
-local list = symbolize(textin)
-local text = serialize(list)
+local symbols = symbolize(textin)
+local text = serialize(symbols)
 
 ioout:write(text)
 io.close(ioout)

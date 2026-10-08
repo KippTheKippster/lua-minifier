@@ -1,4 +1,4 @@
-Lua minifier written in lua.
+# Lua minifier written in lua.
 
 Note: 
 This minifier is purely made and tested for https://github.com/KippTheKippster/CC-Tweaked-MOS.
