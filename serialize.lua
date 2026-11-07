@@ -464,7 +464,10 @@ local function serialize(symbols)
                         skip = true
                     end
                 elseif ctx == ctxLocalDef then
-                    if symbol.type == "keyword" or symbol.src == "=" then
+                    if symbol.src == "function" then
+                        scope, ctx = detachScope(scope)
+                        scope, ctx = detachScope(scope)
+                    elseif symbol.type == "keyword" or symbol.src == "=" then
                         scope, ctx = detachScope(scope)
                         scope, ctx = appendScope(scope, ctxLocalSet)
                         skip = true
