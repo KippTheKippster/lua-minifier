@@ -1,4 +1,4 @@
-assert(type(arg[1]) == "string" and arg[1] ~= "")
+assert(type(arg[1]) == "string" and arg[1] ~= "", "invalid argument")
 
 local allowLog = arg[3] or false
 local function log(...)

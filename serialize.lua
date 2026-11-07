@@ -30,7 +30,9 @@ end
 
 local ctxRoot = newContext(nil, nil, "root", true)
 
-local ctxLocal = newContext("local", nil, "local")
+local ctxLocal = newContext(nil, nil, "local", true)
+local ctxLocalDef = newContext(nil, nil, "localDef")
+local ctxLocalSet = newContext(nil, nil, "localSet")
 local ctxTable = newContext(nil, "}", "table")
 local ctxTableVarDef = newContext(nil, nil, "tableVarDef")
 local ctxTableVarInit = newContext(nil, nil, "tableVarInit")
@@ -63,7 +65,9 @@ local function newScope(ctx, prev, next, owner)
         ctx = ctx,
         next = next,
         prev = prev,
+        ---@type table<string, boolean>
         vars = {},
+        ---@type table<string, string>
         aliases = {},
         aliasCount = 0,
         owner = owner,
@@ -90,6 +94,10 @@ local function isVarDeclared(scope, var)
     while scope ~= nil do
         if scope.vars[var] then
             return true
+        end
+        if scope.ctx == ctxLocalSet then
+            scope = scope.prev
+            assert(scope)
         end
         scope = scope.prev
     end
@@ -121,7 +129,7 @@ end
 ---@param i integer
 ---@return string?
 local function getVarOwner(scope, symbols, i)
-    if scope.ctx == ctxLocal then
+    if scope.ctx == ctxLocalDef or scope.ctx == ctxLocalSet or scope.ctx == ctxLocal then
         return "local"
     elseif scope.ctx == ctxTableVarDef then
         assert(scope.prev)
@@ -199,6 +207,7 @@ end
 
 ---comment
 ---@param scope Scope
+---@param var string
 ---@param alias string
 ---@return Scope?
 local function storeAlias(scope, var, alias)
@@ -253,7 +262,6 @@ local function isAliasAllowed(scope, symbols, i)
         end
         return false
     end
-
 
     return isVarDeclared(scope, symbol.src)
 end
@@ -455,8 +463,23 @@ local function serialize(symbols)
                         scope, ctx = detachScope(scope)
                         skip = true
                     end
-                elseif ctx == ctxLocal then
+                elseif ctx == ctxLocalDef then
                     if symbol.type == "keyword" or symbol.src == "=" then
+                        scope, ctx = detachScope(scope)
+                        scope, ctx = appendScope(scope, ctxLocalSet)
+                        skip = true
+                    end
+                elseif ctx == ctxLocalSet then
+                    local prev = symbols[i-1]
+                    if prev.src ~= "=" and prev.src ~= "," then
+                        scope, ctx = detachScope(scope)
+                        if scope.ctx == ctxLocal then
+                            for var, v in pairs(scope.vars) do -- store local variables in prevScope after local definition
+                                storeVar(scope.prev, var)
+                                storeAlias(scope.prev, var, scope.aliases[var])
+                            end
+                        end
+
                         scope, ctx = detachScope(scope)
                     end
                 elseif ctx == ctxTableVarDef then
@@ -493,6 +516,9 @@ local function serialize(symbols)
                     scope, ctx = appendScope(scope, ctxStructureArgs)
                 elseif symbol.src == "{" then
                     scope, ctx = appendScope(scope, ctxTable, getDefiner(symbols, i))
+                elseif symbol.src == "local" then
+                    scope, ctx = appendScope(scope, ctxLocal)
+                    scope, ctx = appendScope(scope, ctxLocalDef)
                 elseif ctx == ctxFunction then -- function declaration
                     if symbol.src == "(" then
                         scope, ctx = appendScope(scope, ctxFunctionArgs)
@@ -524,14 +550,12 @@ local function serialize(symbols)
                 storeVar(scope.prev, symbol.src) -- 'scope.prev' Fixes so that the function's name is not stored in the function scope
             elseif ctx == ctxFunctionArgs then
                 storeVar(scope, symbol.src)
-            elseif ctx == ctxLocal then
+            elseif ctx == ctxLocalDef then
                 storeVar(scope, symbol.src)
             elseif ctx == ctxStructureArgs then
                 storeVar(scope, symbol.src)
-            else
-                if allowedMemberAlias[symbol.src] then
-                    storeVar(rootScope, symbol.src)
-                end
+            elseif allowedMemberAlias[symbol.src] then
+                storeVar(rootScope, symbol.src)
             end
         end
 
